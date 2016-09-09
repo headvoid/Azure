@@ -59,91 +59,6 @@ param(
 
 $VERSION = "0.1"
 
-# Define function to check current time against specified range
-function CheckScheduleEntry ([string]$TimeRange)
-{	
-	# Initialize variables
-	$rangeStart, $rangeEnd, $parsedDay = $null
-	$currentTime = (Get-Date) #.ToUniversalTime()
-    $midnight = $currentTime.AddDays(1).Date	        
-
-	try
-	{
-	    # Parse as range if contains '->'
-	    if($TimeRange -like "*->*")
-	    {
-	        $timeRangeComponents = $TimeRange -split "->" | foreach {$_.Trim()}
-	        if($timeRangeComponents.Count -eq 2)
-	        {
-	            $rangeStart = Get-Date $timeRangeComponents[0]
-	            $rangeEnd = Get-Date $timeRangeComponents[1]
-	
-	            # Check for crossing midnight
-	            if($rangeStart -gt $rangeEnd)
-	            {
-                    # If current time is between the start of range and midnight tonight, interpret start time as earlier today and end time as tomorrow
-                    if($currentTime -ge $rangeStart -and $currentTime -lt $midnight)
-                    {
-                        $rangeEnd = $rangeEnd.AddDays(1)
-                    }
-                    # Otherwise interpret start time as yesterday and end time as today   
-                    else
-                    {
-                        $rangeStart = $rangeStart.AddDays(-1)
-                    }
-	            }
-	        }
-	        else
-	        {
-	            Write-Output "`tWARNING: Invalid time range format. Expects valid .Net DateTime-formatted start time and end time separated by '->'" 
-	        }
-	    }
-	    # Otherwise attempt to parse as a full day entry, e.g. 'Monday' or 'December 25' 
-	    else
-	    {
-	        # If specified as day of week, check if today
-	        if([System.DayOfWeek].GetEnumValues() -contains $TimeRange)
-	        {
-	            if($TimeRange -eq (Get-Date).DayOfWeek)
-	            {
-	                $parsedDay = Get-Date "00:00"
-	            }
-	            else
-	            {
-	                # Skip detected day of week that isn't today
-	            }
-	        }
-	        # Otherwise attempt to parse as a date, e.g. 'December 25'
-	        else
-	        {
-	            $parsedDay = Get-Date $TimeRange
-	        }
-	    
-	        if($parsedDay -ne $null)
-	        {
-	            $rangeStart = $parsedDay # Defaults to midnight
-	            $rangeEnd = $parsedDay.AddHours(23).AddMinutes(59).AddSeconds(59) # End of the same day
-	        }
-	    }
-	}
-	catch
-	{
-	    # Record any errors and return false by default
-	    Write-Output "`tWARNING: Exception encountered while parsing time range. Details: $($_.Exception.Message). Check the syntax of entry, e.g. '<StartTime> -> <EndTime>', or days/dates like 'Sunday' and 'December 25'"   
-	    return $false
-	}
-	
-	# Check if current time falls within range
-	if($currentTime -ge $rangeStart -and $currentTime -le $rangeEnd)
-	{
-	    return $true
-	}
-	else
-	{
-	    return $false
-	}
-	
-} # End function CheckScheduleEntry
 
 # Function to handle power state assertion for both classic and resource manager VMs
 function AssertVirtualMachinePowerState
@@ -270,16 +185,7 @@ function AssertResourceManagerVirtualMachinePowerState
 try
 {
     $currentTime = (Get-Date).ToUniversalTime().AddHours(12)
-    Write-Output "Runbook started. Version: $VERSION"
-    if($Simulate)
-    {
-        Write-Output "*** Running in SIMULATE mode. No power actions will be taken. ***"
-    }
-    else
-    {
-        Write-Output "*** Running in LIVE mode. Schedules will be enforced. ***"
-    }
-    Write-Output "Current time [$($currentTime.ToString("dddd, yyyy MMM dd HH:mm:ss"))] will be checked against schedules"
+    Write-Output "Runbook started at $currentTime. Version: $VERSION"
 	
     # Retrieve subscription name from variable asset if not specified
     if($AzureSubscriptionName -eq "Use *Default Azure Subscription* Variable Value")
@@ -364,7 +270,9 @@ try
     $classicVMList = Get-AzureVM
 
     # Get resource groups that are tagged for automatic shutdown of resources
-	$taggedResourceGroups = @(Get-AzureRmResourceGroup | where {$_.Tags.Count -gt 0 -and $_.Tags.Name -contains "AutoShutdownSchedule"})
+	$taggedResourceGroups = @(Get-AzureRmResourceGroup | where {$_.Tags.Count -gt 0 -and $_.Tags.Name -contains "ChangePowerState"})
+
+	Write-Output $taggedResourceGroups
     $taggedResourceGroupNames = @($taggedResourceGroups | select -ExpandProperty ResourceGroupName)
     Write-Output "Found [$($taggedResourceGroups.Count)] schedule-tagged resource groups in subscription"	
 
@@ -373,7 +281,7 @@ try
     #  - Is the current time within the tagged schedule 
     # Then assert its correct power state based on the assigned schedule (if present)
     Write-Output "Processing [$($resourceManagerVMList.Count)] virtual machines found in subscription"
-    foreach($vm in $resourceManagerVMList)
+<#    foreach($vm in $resourceManagerVMList)
     {
         $schedule = $null
 
@@ -435,7 +343,7 @@ try
 		    AssertVirtualMachinePowerState -VirtualMachine $vm -DesiredState "Started" -ResourceManagerVMList $resourceManagerVMList -ClassicVMList $classicVMList -Simulate $Simulate
 		}	    
     }
-
+	#>
     Write-Output "Finished processing virtual machine schedules"
 }
 catch

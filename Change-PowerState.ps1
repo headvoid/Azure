@@ -186,10 +186,12 @@ try
 	{	
 		if($vm.currentStatus -eq "running")
 		{
+			Write-Output "Found $vm running, shutting down"
 			Get-AzureRmVM -ResourceGroupName $vm.resourceGroup -Name $vm.vmName | Stop-AzureRmVM -Force
 		}
 		else
 		{
+			Write-Output "Found $vm powered off, starting up"
 			Get-AzureRmVM -ResourceGroupName $vm.resourceGroup -Name $vm.vmName | Start-AzureRmVM
 		}
     }
